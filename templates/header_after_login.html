@@ -1,0 +1,21 @@
+<!-- header_after_login.html -->
+<header class="d-flex flex-wrap align-items-center justify-content-center justify-content-md-between py-3 mb-4 border-bottom">
+    {% include "header.html" %}
+</header>
+
+<div class="row">
+    <!-- Sidebar -->
+    <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar p-3">
+        <div class="position-sticky">
+            <ul class="nav flex-column mb-auto">
+                <li class="nav-item">
+                    <a href="{{url_for('momentum')}}" class="nav-link link-body-emphasis d-flex align-items-center">
+                        <img src="{{ url_for('static', filename='icons/momentum.png') }}" alt="momentum_logo" width="60" height="60" class="me-2">
+                        Momentum
+                    </a>
+                </li>
+                <!-- Add more sidebar items as needed -->
+            </ul>
+        </div>
+    </nav>
+</div>
