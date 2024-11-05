@@ -56,7 +56,7 @@ class Value:
             self.wts = equi_wt(scores, symbol_mapping)
         elif wt_strat == 'cap_wtd':
             symbol_list = scores['symbol_yfinance'].tolist()
-            mkt_cap = [self.extract_market_cap(ticker) for ticker in symbol_list]
+            mkt_cap = [self.extract_line_item(ticker, 'marketCap') for ticker in symbol_list]
             scores['mkt_cap'] = mkt_cap
             self.wts = cap_wt(scores, symbol_mapping)
     def __del__(self):
@@ -157,7 +157,8 @@ class Value:
     def peg(self):
         peg_dict = {}
         for ticker in self.tickers:
-            peg_dict[ticker] = self.extract_line_item(ticker, 'pegRatio')
+            peg = self.extract_line_item(ticker, 'pegRatio')
+            peg_dict[ticker] = peg if peg != 'N/A' else 'N/A'
         peg_df = pd.DataFrame(list(peg_dict.items()), columns=['symbol_yfinance', 'scores'])
         return peg_df
     def composite_score(self):

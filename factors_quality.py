@@ -40,28 +40,30 @@ class Quality:
         elif univ == 'Nifty Next 50':
             pass
 
-        # Calculate Scores based on strategy
-        if strat == 'RSI':
-            pass
-        elif strat == 'Price Momentum (12-1)':
-            scores = self.price_momentum_1_12()
-        elif strat == 'Price Momentum (12-3)':
-            scores = self.price_momentum_3_12()
-        elif strat == 'Price Acceleration':
-            scores = self.price_acceleration()
+            # Calculate Scores based on strategy
+            if strat == 'RSI':
+                pass
+            elif strat == 'Price Momentum (12-1)':
+                scores = self.price_momentum_1_12()
+            elif strat == 'Price Momentum (12-3)':
+                scores = self.price_momentum_3_12()
+            elif strat == 'Price Acceleration':
+                scores = self.price_acceleration()
 
-        scores = scores.sort_values(by='scores', ascending=False)
+
         # Calculate Weights based on weighting strategy
         if wt_strat == 'equal_wt':
             self.wts = equi_wt(scores, symbol_mapping)
         elif wt_strat == 'cap_wtd':
             symbol_list = scores['symbol_yfinance'].tolist()
-            mkt_cap = [self.extract_market_cap(ticker) for ticker in symbol_list]
+            mkt_cap = [self.extract_line_item(ticker, 'marketCap') for ticker in symbol_list]
             scores['mkt_cap'] = mkt_cap
             self.wts = cap_wt(scores, symbol_mapping)
+
     def __del__(self):
         # Close the connection when the object is deleted
-        self.DB.close()
+        if hasattr(self, 'DB') and self.DB:
+            self.DB.close()
 
     def get_wts(self):
         return self.wts
@@ -70,10 +72,7 @@ class Quality:
         try:
             stock = yf.Ticker(ticker)
             line_item = stock.info.get(key)
-            if line_item is not None:
-                return line_item
-            else:
-                return 'N/A'
+            return line_item if line_item is not None else 'N/A'
         except Exception as e:
             print(f"Error fetching {key} for {ticker}: {e}")
             return 'N/A'
@@ -82,10 +81,9 @@ class Quality:
         try:
             stock = yf.Ticker(ticker)
             bs = stock.balance_sheet
-            stock.f
-            line_item = bs.loc[key].iloc[0]
-            if line_item is not None:
-                return line_item
+            if key in bs.index and not bs.empty:
+                line_item = bs.loc[key].iloc[0]
+                return line_item if line_item is not None else 'N/A'
             else:
                 return 'N/A'
         except Exception as e:
@@ -96,14 +94,15 @@ class Quality:
         try:
             stock = yf.Ticker(ticker)
             income_statement = stock.financials
-            line_item = income_statement.loc[key].iloc[0]
-            if line_item is not None:
-                return line_item
+            if key in income_statement.index and not income_statement.empty:
+                line_item = income_statement.loc[key].iloc[0]
+                return line_item if line_item is not None else 'N/A'
             else:
                 return 'N/A'
         except Exception as e:
             print(f"Error fetching {key} for {ticker}: {e}")
             return 'N/A'
+
     def extract_stock_data(self, ticker, **kwargs):
         try:
             stock_data = yf.download(ticker, **kwargs)
@@ -113,50 +112,67 @@ class Quality:
         except Exception as e:
             print(f"Error fetching stock data for {ticker}: {e}")
             return pd.DataFrame()
+
     def asset_turnover(self):
         dict_asset_turnover = {}
         for ticker in self.tickers:
             rev = self.extract_pnl_item(ticker, 'Total Revenue')
             asset = self.extract_balance_sheet_item(ticker, 'Total Assets')
-            dict_asset_turnover[ticker] = rev/asset
+            if rev != 'N/A' and asset != 'N/A' and asset != 0:
+                dict_asset_turnover[ticker] = rev / asset
+            else:
+                dict_asset_turnover[ticker] = 'N/A'
         df_asset_turnover = pd.DataFrame(list(dict_asset_turnover.items()), columns=['symbol_yfinance', 'scores'])
         return df_asset_turnover
+
     def current_ratio(self):
         dict_cr = {}
         for ticker in self.tickers:
             curr_assets = self.extract_balance_sheet_item(ticker, 'Current Assets')
-            curr_debt = self.extract_balance_sheet_item(ticker, 'Current Debt')
-            dict_cr[ticker] = curr_assets/curr_debt
+            curr_debt = self.extract_balance_sheet_item(ticker, 'Current Liabilities')  # Ensure field names match
+            if curr_assets != 'N/A' and curr_debt != 'N/A' and curr_debt != 0:
+                dict_cr[ticker] = curr_assets / curr_debt
+            else:
+                dict_cr[ticker] = 'N/A'
         df_cr = pd.DataFrame(list(dict_cr.items()), columns=['symbol_yfinance', 'scores'])
         return df_cr
+
     def interest_coverage(self):
         dict_ic = {}
         for ticker in self.tickers:
-            ebit = self.extract_pnl_item(ticker, 'EBIT' )
+            ebit = self.extract_pnl_item(ticker, 'EBIT')
             interest_expense = self.extract_pnl_item(ticker, 'Interest Expense')
-            dict_ic[ticker] = ebit/interest_expense
+            if ebit != 'N/A' and interest_expense != 'N/A' and interest_expense != 0:
+                dict_ic[ticker] = ebit / interest_expense
+            else:
+                dict_ic[ticker] = 'N/A'
         df_ic = pd.DataFrame(list(dict_ic.items()), columns=['symbol_yfinance', 'scores'])
         return df_ic
 
     def leverage(self):
         dict_leverage = {}
         for ticker in self.tickers:
-            dict_leverage[ticker] = self.extract_line_item(ticker, 'debtToEquity')
+            leverage = self.extract_line_item(ticker, 'debtToEquity')
+            dict_leverage[ticker] = leverage if leverage != 'N/A' else 'N/A'
         df_leverage = pd.DataFrame(list(dict_leverage.items()), columns=['symbol_yfinance', 'scores'])
         return df_leverage
+
     def payout_ratio(self):
         dict_payout = {}
         for ticker in self.tickers:
-            dict_payout[ticker] = self.extract_line_item(ticker, 'payoutRatio')
+            payout = self.extract_line_item(ticker, 'payoutRatio')
+            dict_payout[ticker] = payout if payout != 'N/A' else 'N/A'
         df_payout = pd.DataFrame(list(dict_payout.items()), columns=['symbol_yfinance', 'scores'])
         return df_payout
+
     def roe(self):
         dict_roe = {}
         for ticker in self.tickers:
             net_income = self.extract_pnl_item(ticker, 'Net Income')
-            total_assets = self.extract_balance_sheet_item(ticker, 'Total Assets')
-            total_debt = self.extract_balance_sheet_item(ticker, 'Total Liabilities Net Minority Interest')
-            equity = total_assets - total_debt
-            dict_roe[ticker] = net_income/equity
+            equity = self.extract_balance_sheet_item(ticker, 'Total Stockholder Equity')  # Ensure field names match
+            if net_income != 'N/A' and equity != 'N/A' and equity != 0:
+                dict_roe[ticker] = net_income / equity
+            else:
+                dict_roe[ticker] = 'N/A'
         df_roe = pd.DataFrame(list(dict_roe.items()), columns=['symbol_yfinance', 'scores'])
         return df_roe
