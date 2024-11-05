@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
 import os
 import datetime as dt
+from factors_momentum import Momentum
 
 #--------------------- CONSTANTS ------------------#
 app = Flask(__name__)
@@ -154,7 +155,9 @@ def momentum():
         strat = request.form.get('strategy')
         univ = request.form.get('asset')
         wt_strategy = request.form.get('wt_strategy')
-
+        mom = Momentum(strat=strat, univ=univ, wt_strat=wt_strategy)
+        wts = mom.get_wts()
+        print(wts)
     return render_template("momentum.html")
 
 if __name__ == "__main__":
