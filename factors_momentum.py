@@ -13,6 +13,7 @@ import datetime as dt
 from ta.momentum import RSIIndicator
 from weighting_strategy import equi_wt, cap_wt
 from sklearn.linear_model import LinearRegression
+from extract_data import Extract_Data
 
 # ---------------------CONSTANTS------------------#
 def get_db_connection():
@@ -37,7 +38,9 @@ class Momentum:
         if univ == 'All':
             self.tickers = symbols['symbol_yfinance'].tolist()
         elif univ == 'Nifty 50':
-            pass
+            symbol_nse_df = pd.read_sql_query("SELECT * FROM table_symbol_nse", self.DB)
+            flag = symbol_nse_df['nifty_50'].tolist()
+            self.tickers = symbols['symbol_yfinance'][pd.Series(flag).astype(bool)].tolist()
         elif univ == 'Nifty 500':
             self.tickers = symbols['symbol_yfinance'].head(500).tolist()
         elif univ == 'Nifty Next 50':
@@ -54,14 +57,14 @@ class Momentum:
             scores = self.price_acceleration()
 
         scores = scores.sort_values(by='scores', ascending=False)
-        num_rows = int(len(df) * 0.2)
+        num_rows = int(len(scores) * 0.2)
         scores = scores.iloc[:num_rows]
         # Calculate Weights based on weighting strategy
         if wt_strat == 'equal_wt':
             self.wts = equi_wt(scores, symbol_mapping)
-        elif wt_strat == 'cap_wtd':
+        elif wt_strat == 'mkt_cap':
             symbol_list = scores['symbol_yfinance'].tolist()
-            mkt_cap = [self.extract_market_cap(ticker) for ticker in symbol_list]
+            mkt_cap = [Extract_Data(ticker).extract_market_cap() for ticker in symbol_list]
             scores['mkt_cap'] = mkt_cap
             self.wts = cap_wt(scores, symbol_mapping)
 
@@ -74,18 +77,25 @@ class Momentum:
         return self.wts
 
     # Function to extract market capitalization with error handling
-    def extract_market_cap(self, ticker):
-        try:
-            stock = yf.Ticker(ticker)
-            market_cap = stock.info.get('marketCap')
-            return market_cap if market_cap else 'N/A'
-        except Exception as e:
-            print(f"Error fetching market capitalization for {ticker}: {e}")
-            return 'N/A'
+    # def extract_market_cap(self, ticker):
+    #     try:
+    #         stock = yf.Ticker(ticker)
+    #         market_cap = stock.info.get('marketCap')
+    #         return market_cap if market_cap else 'N/A'
+    #     except Exception as e:
+    #         print(f"Error fetching market capitalization for {ticker}: {e}")
+    #         return 'N/A'
 
-    def extract_stock_data(self, ticker, **kwargs):
-        stock_data = yf.download(ticker, **kwargs)
-        return stock_data
+    # def extract_stock_data(self, ticker, **kwargs):
+    #     try:
+    #         stock = yf.Ticker(ticker)
+    #         stock_data = stock.history(**kwargs)
+    #         if stock_data.empty:
+    #             raise ValueError(f"No data found for {ticker}")
+    #         return stock_data
+    #     except Exception as e:
+    #         print(f"Error fetching stock data for {ticker}: {e}")
+    #         return pd.DataFrame()
 
     def calculate_monthly_returns_for_lags(self, monthly_prices, lags):
         data = pd.DataFrame(index=monthly_prices.index)
@@ -98,14 +108,15 @@ class Momentum:
                 .sub(1)
             )
         return data
-
-    def rsi(self, tickers):
+#---------------------------STRATEGIES--------------------------#
+    def rsi(self):
         rsi_dict = {}
 
-        for ticker in tickers:
+        for ticker in self.tickers:
             # Fetch 1 year of daily adjusted close prices
-            temp = self.extract_stock_data(ticker, period='1y', interval='1d')
-            prices = temp['Adj Close'].dropna()
+            data = Extract_Data(ticker)
+            temp = data.extract_stock_data(period='1y', interval='1d')
+            prices = temp['Close'].dropna()
 
             if len(prices) < 14:  # Ensure we have sufficient data for RSI calculation
                 continue
@@ -130,14 +141,15 @@ class Momentum:
     def price_momentum_1_12(self):
         mom_dict = {}
         for ticker in self.tickers:
-            temp = self.extract_stock_data(ticker, period='2y', interval='1d')
-            prices = temp['Adj Close']
+            data = Extract_Data(ticker)
+            temp = data.extract_stock_data(period='2y', interval='1d')
+            prices = temp['Close']
             monthly_prices = prices.resample('ME').last()
             lags = [1, 12]
 
             data = self.calculate_monthly_returns_for_lags(monthly_prices, lags)
             data['momentum_1_12'] = data['return_12m'].sub(data['return_1m'])
-            mom_dict[ticker] = data['momentum_1_12'].tail(1).values
+            mom_dict[ticker] = data['momentum_1_12'].tail(1).values[0]
 
         mom_df = pd.DataFrame(list(mom_dict.items()), columns=['symbol_yfinance', 'scores'])
         return mom_df
@@ -145,14 +157,15 @@ class Momentum:
     def price_momentum_3_12(self):
         mom_dict = {}
         for ticker in self.tickers:
-            temp = self.extract_stock_data(ticker, period='2y', interval='1d')
-            prices = temp['Adj Close']
+            data = Extract_Data(ticker)
+            temp = data.extract_stock_data(period='2y', interval='1d')
+            prices = temp['Close']
             monthly_prices = prices.resample('ME').last()
             lags = [3, 12]
 
             data = self.calculate_monthly_returns_for_lags(monthly_prices, lags)
             data['momentum_3_12'] = data['return_12m'].sub(data['return_3m'])
-            mom_dict[ticker] = data['momentum_3_12'].tail(1).values
+            mom_dict[ticker] = data['momentum_3_12'].tail(1).values[0]
 
         mom_df = pd.DataFrame(list(mom_dict.items()), columns=['symbol_yfinance', 'scores'])
         return mom_df
@@ -162,8 +175,9 @@ class Momentum:
 
         for ticker in self.tickers:
             # Fetch 1 year of daily adjusted close prices
-            temp = self.extract_stock_data(ticker, period='1y', interval='1d')
-            prices = temp['Adj Close'].dropna()
+            data = Extract_Data(ticker)
+            temp = data.extract_stock_data(period='2y', interval='1d')
+            prices = temp['Close'].dropna()
 
             if len(prices) < 252:  # Ensure we have sufficient data for a 1-year period
                 continue
@@ -174,10 +188,11 @@ class Momentum:
 
             # Create arrays for linear regression (X as time index, y as prices)
             X_long = np.arange(long_period).reshape(-1, 1)
-            y_long = prices[-long_period:].values.reshape(-1, 1)
+            y_long = prices.tail(long_period).values.reshape(-1, 1)
 
             X_short = np.arange(short_period).reshape(-1, 1)
-            y_short = prices[-short_period:].values.reshape(-1, 1)
+            y_short = prices.tail(short_period).values.reshape(-1, 1)
+
 
             # Apply linear regression to get the slope for each period
             model_long = LinearRegression().fit(X_long, y_long)

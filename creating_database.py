@@ -31,6 +31,22 @@ for i in variables:
 
 # Commit the transaction and close the connection
 db.commit()
+
+#Creating Nifty50 Database
+nifty_50 = pd.read_csv('raw_datasets/nifty_50.csv')
+nifty_50_symbols = nifty_50['symbol_nse'].tolist()
+
+# Load head_database into a DataFrame
+head_df = pd.read_sql("SELECT * FROM table_symbol_nse", db)
+
+# Add a new column 'nifty_50' with 1 if symbol is in nifty_50, else 0
+head_df['nifty_50'] = head_df['symbol_nse'].apply(lambda x: 1 if x in nifty_50_symbols else 0)
+
+# Save the updated DataFrame back to the SQL database
+head_df.to_sql('table_symbol_nse', db, if_exists='replace', index=False)
+
+# Commit and close the database connection
+db.commit()
 db.close()
 
 # Creating Database for Users
@@ -54,6 +70,9 @@ try:
 except Exception as e:
     print("An error occurred:", e)
     DB_user.rollback()  # Roll back any changes if an error occurs
+
+
+
 
 finally:
     DB_user.close()  # Ensure the database connection is closed

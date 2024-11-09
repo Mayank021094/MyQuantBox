@@ -1,15 +1,17 @@
-#------------------ Import Libraries ------------#
+# ------------------ Import Libraries ------------#
 import pandas as pd
 import sqlite3
 import smtplib  # To send emails
-from flask import Flask, render_template, request, url_for, redirect, flash, g
+from flask import session, Flask, render_template, request, url_for, redirect, flash, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
 import os
 import datetime as dt
 from factors_momentum import Momentum
+from factors_value import Value
+from factors_quality import Quality
 
-#--------------------- CONSTANTS ------------------#
+# --------------------- CONSTANTS ------------------#
 app = Flask(__name__)
 app.config['SECRET_KEY'] = "TEMP@0210"
 
@@ -18,6 +20,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'log_in'
 
+
 # Database helper function
 def get_db():
     if 'db' not in g:
@@ -25,13 +28,15 @@ def get_db():
         g.db.row_factory = sqlite3.Row  # This allows column access by name
     return g.db
 
+
 @app.teardown_appcontext
 def close_db(error):
     db = g.pop('db', None)
     if db is not None:
         db.close()
 
-#------------------ User Loader ----------------#
+
+# ------------------ User Loader ----------------#
 @login_manager.user_loader
 def load_user(user_id):
     db = get_db()
@@ -43,19 +48,22 @@ def load_user(user_id):
         return user
     return None
 
-#------------------- User Model ----------------#
+
+# ------------------- User Model ----------------#
 class User(UserMixin):
     def __init__(self, id=None, email=None):
         self.id = id
         self.email = email
 
-#-------------------- MAIN CODE -------------------#
 
-#---------------Login, Home, Signup---------------#
+# -------------------- MAIN CODE -------------------#
+
+# ---------------Login, Home, Signup---------------#
 
 @app.route('/')
 def home():
     return render_template("index.html")
+
 
 @app.route('/login', methods=["GET", "POST"])
 def log_in():
@@ -87,6 +95,7 @@ def log_in():
         return redirect(url_for('dashboard'))
 
     return render_template("login.html")
+
 
 @app.route('/sign_up', methods=["GET", "POST"])
 def sign_up():
@@ -144,21 +153,41 @@ def sign_up():
 
     return render_template("signup.html")
 
-#-----------------------Sidebar Items---------------#
+
+# -----------------------Sidebar Items---------------#
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     return render_template("dashboard.html")
 
-@app.route('/dashboard/momentum',methods=['GET', 'POST'] )
-def momentum():
-    if request.method=='POST':
+
+@app.route('/dashboard/<string:id>', methods=['GET', 'POST'])
+def strategy(id):
+    if request.method == 'POST':
         strat = request.form.get('strategy')
         univ = request.form.get('asset')
         wt_strategy = request.form.get('wt_strategy')
-        mom = Momentum(strat=strat, univ=univ, wt_strat=wt_strategy)
-        wts = mom.get_wts()
-        print(wts)
-    return render_template("momentum.html")
+        print([strat, univ, wt_strategy])
+        if id == 'Momentum':
+            strat_func = Momentum(strat=strat, univ=univ, wt_strat=wt_strategy)
+        elif id == 'Value':
+            strat_func = Value(strat=strat, univ=univ, wt_strat=wt_strategy)
+        elif id == 'Quality':
+            strat_func = Quality(strat=strat, univ=univ, wt_strat=wt_strategy)
+        parameters = {'strat': strat, 'universe': univ, 'wt': wt_strategy}
+        wts = strat_func.get_wts()
+        session['param'] = parameters
+        session['wts'] = wts.to_json()  # Convert DataFrame to JSON string
+        return redirect(url_for('results', id=id))
+    return render_template("strategy_body.html", id=id)
+
+
+@app.route('/dashboard/<string:id>/Results', methods=['GET', 'POST'])
+def results(id):
+    wts_json = session.get('wts')
+    param = session.get('param')
+    wts = pd.read_json(wts_json)  # Convert JSON string back to DataFrame
+    return render_template('results.html', id=id, wts=wts, param=param)
+
 
 if __name__ == "__main__":
     app.run(debug=True)

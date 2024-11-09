@@ -1,13 +1,16 @@
-<form method="post" action="{{url_for('strategy', id='Momentum')}}">
+<form method="post" action="{{url_for('strategy', id='Value')}}">
     <br>
     <div class="col-12 mb-3">
         <label for="strategy" class="form-label">Strategy</label>
         <select id="strategy" name="strategy" class="form-select">
             <option value>Choose...</option>
-            <option>RSI</option>
-            <option>Price Momentum (12-1)</option>
-            <option>Price Momentum (12-3)</option>
-            <option>Price Acceleration</option>
+            <option>Cash Flow Yield</option>
+            <option>Book-to-Market</option>
+            <option>Dividend Yield</option>
+            <option>Earnings Yield</option>
+            <option>Sales Yield</option>
+            <option>PEG Ratio</option>
+            <option>Composite Score</option>
         </select>
     </div>
     <div class="col-12 mb-3">
