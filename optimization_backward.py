@@ -75,6 +75,148 @@ class Optimization:
     # -----------------------STRATEGIES----------------------#
 
     def max_sharpe(self):
+
+        ret_df = self.get_weekly_returns_df()
+
+        # Compute mean returns, covariance, risk-free rate and precision matrix
+        mean_returns = ret_df.mean()
+        cov_matrix = ret_df.cov()
+        # precision_matrix = pd.DataFrame(inv(cov_matrix), index=ret_df.columns, columns=ret_df.columns)
+        self.rf = self.extract_weekly_rf()
+
+        # Define the constraint that weights sum to 1
+        weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        # Initial guess for weights
+        x0 = np.random.dirichlet(np.ones(len(ret_df.columns)), size=1)[0]
+        # Optimize the portfolio to maximize the Sharpe Ratio
+        wts = minimize(
+            fun=self.neg_sharpe_ratio,
+            x0=x0,
+            args=(mean_returns, cov_matrix),
+            method='SLSQP',
+            bounds=[(0, 1) for _ in range(len(ret_df.columns))],
+            constraints=weight_constraint,
+            options={'maxiter': 1e4}
+        )
+
+        # Store and display the optimal weights
+        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': wts.x})
+
+        # print(self.wts)
+
+    def min_vol(self):
+        ret_df, start, end = self.get_weekly_returns_df()
+
+        # Compute mean returns, covariance, risk-free rate and precision matrix
+        mean_returns = ret_df.mean()
+        cov_matrix = ret_df.cov()
+        # precision_matrix = pd.DataFrame(inv(cov_matrix), index=ret_df.columns, columns=ret_df.columns)
+        self.rf = self.extract_weekly_rf(start, end)
+
+        # Define the constraint that weights sum to 1
+        weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+        # Initial guess for weights
+        x0 = np.random.dirichlet(np.ones(len(ret_df.columns)), size=1)[0]
+        # Optimize the portfolio to maximize the Sharpe Ratio
+        wts = minimize(
+            fun=self.portfolio_std,
+            x0=x0,
+            args=(cov_matrix, ),
+            method='SLSQP',
+            bounds=[(0, 1) for _ in range(len(ret_df.columns))],
+            constraints=weight_constraint,
+            options={'tol': 1e-10, 'maxiter': 1e4}
+        )
+        # Store and display the optimal weights
+        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': wts.x})
+        print(self.wts)
+
+    def risk_parity(self):
+        # Get the weekly returns DataFrame and the date range
+        ret_df, _, _ = self.get_weekly_returns_df()
+
+        # Calculate the covariance matrix
+        cov_matrix = ret_df.cov()
+
+        # Define the objective function for risk parity
+        def risk_parity_obj(weights):
+            # Calculate the portfolio variance and standard deviation
+            portfolio_var = weights.T @ cov_matrix @ weights
+            portfolio_std = np.sqrt(portfolio_var)
+
+            # Calculate the marginal risk contribution for each asset
+            marginal_risk_contrib = cov_matrix @ weights
+
+            # Calculate the risk contribution for each asset
+            risk_contrib = weights * marginal_risk_contrib / portfolio_std
+
+            # The target risk contribution for each asset is the total risk divided by the number of assets
+            target_risk_contrib = portfolio_std / len(weights)
+
+            # Minimize the squared difference between each asset's risk contribution and the target
+            return np.sum((risk_contrib - target_risk_contrib) ** 2)
+
+        # Constraints: weights must sum to 1
+        weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
+
+        # Initial guess for weights (equal weighting)
+        x0 = np.array([1 / len(ret_df.columns)] * len(ret_df.columns))
+
+        # Bounds for each weight (between 0 and 1)
+        bounds = [(0, 1) for _ in range(len(ret_df.columns))]
+
+        # Run the optimization to minimize the risk parity objective
+        result = minimize(
+            fun=risk_parity_obj,
+            x0=x0,
+            bounds=bounds,
+            constraints=weight_constraint,
+            method='SLSQP'
+        )
+
+        # Store and print the optimal weights
+        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': result.x})
+        print(self.wts)
+
+    def inverse_volatility(self):
+        # Get the weekly returns DataFrame
+        ret_df, _, _ = self.get_weekly_returns_df()
+
+        # Calculate the standard deviation (volatility) of each asset's returns
+        volatilities = ret_df.std()
+
+        # Calculate the inverse of volatilities
+        inv_volatilities = 1 / volatilities
+
+        # Normalize so weights sum to 1
+        weights = inv_volatilities / inv_volatilities.sum()
+
+        # Store and display the weights
+        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': weights})
+        print(self.wts)
+
+    def kelly(self):
+        pass
+
+    # ------------------------STRATEGIES BACKEND---------------------#
+    # Portfolio metrics
+    def portfolio_std(self, weights, cov=None):
+        return np.sqrt(weights @ cov @ weights * self.periods_per_year)
+
+    def portfolio_returns(self, weights, rt=None):
+        return (weights @ rt + 1) ** self.periods_per_year - 1
+
+    def portfolio_performance(self, weights, rt, cov):
+        r = self.portfolio_returns(weights, rt=rt)
+        sd = self.portfolio_std(weights, cov=cov)
+        return r, sd
+
+    def neg_sharpe_ratio(self, weights, mean_ret, cov):
+        """Calculate the negative Sharpe ratio given portfolio weights."""
+        r, sd = self.portfolio_performance(weights, mean_ret, cov)
+        return -(r - self.rf) / sd
+
+    def get_weekly_returns_df(self):
         ret_dict = {}
         for ticker in self.tickers:
             data = Extract_Data(ticker)
@@ -105,63 +247,16 @@ class Optimization:
         self.periods_per_year = round(periods_per_year)
         ret_df.drop(['Year'], axis=1, inplace=True)
 
-        # Compute mean returns, covariance, and precision matrix
-        mean_returns = ret_df.mean()
-        cov_matrix = ret_df.cov()
-        precision_matrix = pd.DataFrame(inv(cov_matrix), index=ret_df.columns, columns=ret_df.columns)
+        return ret_df, start, end
 
+    def extract_weekly_rf(self, start, end):
         # Fetch risk-free rate (using '^TNX' as proxy for 10-year rate)
+
         rf_data = yf.Ticker("^TNX")
         rf = rf_data.history(start=start, end=end)['Close'].resample('W').last()
         rf = rf.div(self.periods_per_year).div(100).mean()
-        self.rf = rf
-
-        # Define the constraint that weights sum to 1
-        weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
-
-        # Initial guess for weights
-        x0 = np.random.dirichlet(np.ones(len(ret_df.columns)), size=1)[0]
-
-        # Optimize the portfolio to maximize the Sharpe Ratio
-        wts = minimize(
-            fun=self.neg_sharpe_ratio,
-            x0=x0,
-            args=(mean_returns, cov_matrix),
-            method='SLSQP',
-            bounds=[(0, 1) for _ in range(len(ret_df.columns))],
-            constraints=weight_constraint,
-            options={'maxiter': 1e4}
-        )
-        # Store and display the optimal weights
-        self.wts = pd.DataFrame({'Symbol_NSE':ret_df.columns, 'Weights':wts.x})
-        print(self.wts)
-
-    def min_vol(self):
-        pass
-
-    def risk_parity(self):
-        pass
-
-    def kelly(self):
-        pass
-
-    # Portfolio metrics
-    def portfolio_std(self, weights, cov=None):
-        return np.sqrt(weights @ cov @ weights * self.periods_per_year)
-
-    def portfolio_returns(self, weights, rt=None):
-        return (weights @ rt + 1) ** self.periods_per_year - 1
-
-    def portfolio_performance(self, weights, rt, cov):
-        r = self.portfolio_returns(weights, rt=rt)
-        sd = self.portfolio_std(weights, cov=cov)
-        return r, sd
-
-    def neg_sharpe_ratio(self, weights, mean_ret, cov):
-        """Calculate the negative Sharpe ratio given portfolio weights."""
-        r, sd = self.portfolio_performance(weights, mean_ret, cov)
-        return -(r - self.rf) / sd
+        return rf
 
 
 temp = Optimization(univ='Nifty 50')
-temp.max_sharpe()
+temp.inverse_volatility()
