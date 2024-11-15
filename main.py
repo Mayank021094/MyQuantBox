@@ -10,6 +10,7 @@ import datetime as dt
 from factors_momentum import Momentum
 from factors_value import Value
 from factors_quality import Quality
+from optimization import Optimization
 
 # --------------------- CONSTANTS ------------------#
 app = Flask(__name__)
@@ -165,15 +166,25 @@ def strategy(id):
     if request.method == 'POST':
         strat = request.form.get('strategy')
         univ = request.form.get('asset')
-        wt_strategy = request.form.get('wt_strategy')
-        print([strat, univ, wt_strategy])
+        parameters = {'strat': strat, 'universe': univ}
         if id == 'Momentum':
+            wt_strategy = request.form.get('wt_strategy')
+            print([strat, univ, wt_strategy])
+            parameters['wt'] = wt_strategy
             strat_func = Momentum(strat=strat, univ=univ, wt_strat=wt_strategy)
         elif id == 'Value':
+            wt_strategy = request.form.get('wt_strategy')
+            print([strat, univ, wt_strategy])
+            parameters['wt'] = wt_strategy
             strat_func = Value(strat=strat, univ=univ, wt_strat=wt_strategy)
         elif id == 'Quality':
+            wt_strategy = request.form.get('wt_strategy')
+            print([strat, univ, wt_strategy])
+            parameters['wt'] = wt_strategy
             strat_func = Quality(strat=strat, univ=univ, wt_strat=wt_strategy)
-        parameters = {'strat': strat, 'universe': univ, 'wt': wt_strategy}
+        elif id == 'Optimization':
+            strat_func = Optimization(strat=strat, univ=univ)
+
         wts = strat_func.get_wts()
         session['param'] = parameters
         session['wts'] = wts.to_json()  # Convert DataFrame to JSON string

@@ -1,0 +1,29 @@
+<form method="post" action="{{url_for('strategy', id='Optimization')}}">
+    <br>
+    <div class="col-12 mb-3">
+        <label for="strategy" class="form-label">Strategy</label>
+        <select id="strategy" name="strategy" class="form-select">
+            <option value>Choose...</option>
+            <option>Max Sharpe Ratio</option>
+            <option>Min Volatility</option>
+            <option>Risk Parity</option>
+            <option>Inverse Volatility</option>
+            <option>Kelly</option>
+        </select>
+    </div>
+    <div class="col-12 mb-3">
+        <label for="asset_universe" class="form-label">Asset Universe</label>
+        <select id="asset_universe" name="asset" class="form-select">
+            <option value>Choose...</option>
+            <option>Nifty 50</option>
+            <option>All</option>
+            <option>Nifty 500</option>
+            <option>Nifty Next 50</option>
+        </select>
+    </div>
+    <div class="my-3">
+        <br>
+        <button type="submit" class="btn btn-primary">Submit</button>
+    </div>
+</form>
+

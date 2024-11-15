@@ -4,7 +4,6 @@ import sqlite3
 import numpy as np
 from numpy.random import random, uniform, dirichlet, choice
 from numpy.linalg import inv
-from scipy.optimize import minimize
 import yfinance as yf
 import statsmodels.api as sm
 from statsmodels.regression.rolling import RollingOLS
@@ -17,6 +16,10 @@ from ta.momentum import RSIIndicator
 from weighting_strategy import equi_wt, cap_wt
 from sklearn.linear_model import LinearRegression
 from extract_data import Extract_Data
+from sympy import symbols, solve, log, diff
+from scipy.optimize import minimize_scalar, newton, minimize
+from scipy.integrate import quad
+from scipy.stats import norm
 
 
 # ---------------------CONSTANTS------------------#
@@ -26,7 +29,7 @@ def get_db_connection():
 
 # --------------------MAIN CODE-------------------#
 class Optimization:
-    def __init__(self, univ):
+    def __init__(self, strat, univ):
 
         self.periods_per_year = None
         self.rf = None
@@ -55,14 +58,16 @@ class Optimization:
             pass
 
         # Calculate Scores based on strategy
-        # if strat == 'RSI':
-        #     scores = self.rsi()
-        # elif strat == 'Price Momentum (12-1)':
-        #     scores = self.price_momentum_1_12()
-        # elif strat == 'Price Momentum (12-3)':
-        #     scores = self.price_momentum_3_12()
-        # elif strat == 'Price Acceleration':
-        #     scores = self.price_acceleration()
+        if strat == 'Max Sharpe Ratio':
+            self.max_sharpe()
+        elif strat == 'Min Volatility':
+            self.min_vol()
+        elif strat == 'Risk Parity':
+            self.risk_parity()
+        elif strat == 'Inverse Volatility':
+            self.inverse_volatility()
+        elif strat == 'Kelly':
+            self.kelly()
 
     def __del__(self):
         # Close the connection when the object is deleted
@@ -86,8 +91,8 @@ class Optimization:
 
         # Define the constraint that weights sum to 1
         weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
-        # Initial guess for weights
-        x0 = np.random.dirichlet(np.ones(len(ret_df.columns)), size=1)[0]
+        # Initial guess for weights (equal weights)
+        x0 = np.array([1 / len(ret_df.columns)] * len(ret_df.columns))
         # Optimize the portfolio to maximize the Sharpe Ratio
         wts = minimize(
             fun=self.neg_sharpe_ratio,
@@ -102,8 +107,6 @@ class Optimization:
         # Store and display the optimal weights
         self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': wts.x})
 
-        # print(self.wts)
-
     def min_vol(self):
         ret_df, start, end = self.get_weekly_returns_df()
 
@@ -115,13 +118,13 @@ class Optimization:
 
         # Define the constraint that weights sum to 1
         weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
-        # Initial guess for weights
-        x0 = np.random.dirichlet(np.ones(len(ret_df.columns)), size=1)[0]
+        # Initial guess for weights (equal weights)
+        x0 = np.array([1 / len(ret_df.columns)] * len(ret_df.columns))
         # Optimize the portfolio to maximize the Sharpe Ratio
         wts = minimize(
             fun=self.portfolio_std,
             x0=x0,
-            args=(cov_matrix, ),
+            args=(cov_matrix,),
             method='SLSQP',
             bounds=[(0, 1) for _ in range(len(ret_df.columns))],
             constraints=weight_constraint,
@@ -129,7 +132,6 @@ class Optimization:
         )
         # Store and display the optimal weights
         self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': wts.x})
-        print(self.wts)
 
     def risk_parity(self):
         # Get the weekly returns DataFrame and the date range
@@ -176,15 +178,12 @@ class Optimization:
 
         # Store and print the optimal weights
         self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': result.x})
-        print(self.wts)
 
     def inverse_volatility(self):
         # Get the weekly returns DataFrame
         ret_df, _, _ = self.get_weekly_returns_df()
-
         # Calculate the standard deviation (volatility) of each asset's returns
         volatilities = ret_df.std()
-
         # Calculate the inverse of volatilities
         inv_volatilities = 1 / volatilities
 
@@ -192,11 +191,27 @@ class Optimization:
         weights = inv_volatilities / inv_volatilities.sum()
 
         # Store and display the weights
-        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': weights})
-        print(self.wts)
+        self.wts = pd.DataFrame({'Weights': weights})
+        self.wts = self.wts.reset_index()
 
     def kelly(self):
-        pass
+        # Get the weekly returns DataFrame and the date range
+        ret_df, start, end = self.get_weekly_returns_df()
+        # Calculate the covariance matrix
+        mean_returns = ret_df.mean()
+        cov_matrix = ret_df.cov()
+        rf = self.extract_weekly_rf(start=start, end=end)
+        # Calculate the precision matrix (inverse of covariance matrix)
+        precision_matrix = np.linalg.inv(cov_matrix)
+        # Calculate raw Kelly weights
+        raw_weights = precision_matrix.dot(mean_returns) / rf
+        # Shift weights to make them non-negative
+        shifted_weights = raw_weights - np.min(raw_weights)
+        # Normalize weights so that they sum to 1
+        normalized_weights = shifted_weights / np.sum(shifted_weights)
+        # Normalize weights so that they sum to 1
+        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': normalized_weights})
+        print(self.wts)
 
     # ------------------------STRATEGIES BACKEND---------------------#
     # Portfolio metrics
@@ -257,6 +272,3 @@ class Optimization:
         rf = rf.div(self.periods_per_year).div(100).mean()
         return rf
 
-
-temp = Optimization(univ='Nifty 50')
-temp.inverse_volatility()
