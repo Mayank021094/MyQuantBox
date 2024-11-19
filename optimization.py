@@ -20,6 +20,7 @@ from sympy import symbols, solve, log, diff
 from scipy.optimize import minimize_scalar, newton, minimize
 from scipy.integrate import quad
 from scipy.stats import norm
+from expected_volatility import Expected_Volatility
 
 
 # ---------------------CONSTANTS------------------#
@@ -34,6 +35,9 @@ class Optimization:
         self.periods_per_year = None
         self.rf = None
         self.wts = None
+        self.price_df = None
+        self.start = None
+        self.end = None
         # Use the function to create a new connection
         self.DB = get_db_connection()
 
@@ -56,6 +60,9 @@ class Optimization:
             self.tickers = symbols['symbol_yfinance'].head(500).tolist()
         elif univ == 'Nifty Next 50':
             pass
+
+        self.price_df = self.get_weekly_prices_df()
+        self.cov_mat = Expected_Volatility(self.price_df).mgarch()
 
         # Calculate Scores based on strategy
         if strat == 'Max Sharpe Ratio':
@@ -81,64 +88,64 @@ class Optimization:
 
     def max_sharpe(self):
 
-        ret_df = self.get_weekly_returns_df()
+        # self.ret_df = self.get_weekly_returns_df()
 
         # Compute mean returns, covariance, risk-free rate and precision matrix
-        mean_returns = ret_df.mean()
-        cov_matrix = ret_df.cov()
-        # precision_matrix = pd.DataFrame(inv(cov_matrix), index=ret_df.columns, columns=ret_df.columns)
+        mean_returns = self.ret_df.mean()
+        cov_matrix = self.ret_df.cov()
+        # precision_matrix = pd.DataFrame(inv(cov_matrix), index=self.ret_df.columns, columns=self.ret_df.columns)
         self.rf = self.extract_weekly_rf()
 
         # Define the constraint that weights sum to 1
         weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
         # Initial guess for weights (equal weights)
-        x0 = np.array([1 / len(ret_df.columns)] * len(ret_df.columns))
+        x0 = np.array([1 / len(self.ret_df.columns)] * len(self.ret_df.columns))
         # Optimize the portfolio to maximize the Sharpe Ratio
         wts = minimize(
             fun=self.neg_sharpe_ratio,
             x0=x0,
             args=(mean_returns, cov_matrix),
             method='SLSQP',
-            bounds=[(0, 1) for _ in range(len(ret_df.columns))],
+            bounds=[(0, 1) for _ in range(len(self.ret_df.columns))],
             constraints=weight_constraint,
             options={'maxiter': 1e4}
         )
 
         # Store and display the optimal weights
-        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': wts.x})
+        self.wts = pd.DataFrame({'Symbol_NSE': self.ret_df.columns, 'Weights': wts.x})
 
     def min_vol(self):
-        ret_df, start, end = self.get_weekly_returns_df()
+        # self.ret_df, self.start, self.end = self.get_weekly_returns_df()
 
         # Compute mean returns, covariance, risk-free rate and precision matrix
-        mean_returns = ret_df.mean()
-        cov_matrix = ret_df.cov()
-        # precision_matrix = pd.DataFrame(inv(cov_matrix), index=ret_df.columns, columns=ret_df.columns)
-        self.rf = self.extract_weekly_rf(start, end)
+        mean_returns = self.ret_df.mean()
+        cov_matrix = self.ret_df.cov()
+        # precision_matrix = pd.DataFrame(inv(cov_matrix), index=self.ret_df.columns, columns=self.ret_df.columns)
+        self.rf = self.extract_weekly_rf()
 
         # Define the constraint that weights sum to 1
         weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
         # Initial guess for weights (equal weights)
-        x0 = np.array([1 / len(ret_df.columns)] * len(ret_df.columns))
+        x0 = np.array([1 / len(self.ret_df.columns)] * len(self.ret_df.columns))
         # Optimize the portfolio to maximize the Sharpe Ratio
         wts = minimize(
             fun=self.portfolio_std,
             x0=x0,
             args=(cov_matrix,),
             method='SLSQP',
-            bounds=[(0, 1) for _ in range(len(ret_df.columns))],
+            bounds=[(0, 1) for _ in range(len(self.ret_df.columns))],
             constraints=weight_constraint,
             options={'tol': 1e-10, 'maxiter': 1e4}
         )
         # Store and display the optimal weights
-        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': wts.x})
+        self.wts = pd.DataFrame({'Symbol_NSE': self.ret_df.columns, 'Weights': wts.x})
 
     def risk_parity(self):
         # Get the weekly returns DataFrame and the date range
-        ret_df, _, _ = self.get_weekly_returns_df()
+        # self.ret_df, _, _ = self.get_weekly_returns_df()
 
         # Calculate the covariance matrix
-        cov_matrix = ret_df.cov()
+        cov_matrix = self.ret_df.cov()
 
         # Define the objective function for risk parity
         def risk_parity_obj(weights):
@@ -162,10 +169,10 @@ class Optimization:
         weight_constraint = {'type': 'eq', 'fun': lambda x: np.sum(x) - 1}
 
         # Initial guess for weights (equal weighting)
-        x0 = np.array([1 / len(ret_df.columns)] * len(ret_df.columns))
+        x0 = np.array([1 / len(self.ret_df.columns)] * len(self.ret_df.columns))
 
         # Bounds for each weight (between 0 and 1)
-        bounds = [(0, 1) for _ in range(len(ret_df.columns))]
+        bounds = [(0, 1) for _ in range(len(self.ret_df.columns))]
 
         # Run the optimization to minimize the risk parity objective
         result = minimize(
@@ -177,13 +184,13 @@ class Optimization:
         )
 
         # Store and print the optimal weights
-        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': result.x})
+        self.wts = pd.DataFrame({'Symbol_NSE': self.ret_df.columns, 'Weights': result.x})
 
     def inverse_volatility(self):
         # Get the weekly returns DataFrame
-        ret_df, _, _ = self.get_weekly_returns_df()
+        # self.ret_df, _, _ = self.get_weekly_returns_df()
         # Calculate the standard deviation (volatility) of each asset's returns
-        volatilities = ret_df.std()
+        volatilities = self.ret_df.std()
         # Calculate the inverse of volatilities
         inv_volatilities = 1 / volatilities
 
@@ -196,11 +203,11 @@ class Optimization:
 
     def kelly(self):
         # Get the weekly returns DataFrame and the date range
-        ret_df, start, end = self.get_weekly_returns_df()
+        # self.ret_df, self.start, self.end = self.get_weekly_returns_df()
         # Calculate the covariance matrix
-        mean_returns = ret_df.mean()
-        cov_matrix = ret_df.cov()
-        rf = self.extract_weekly_rf(start=start, end=end)
+        mean_returns = self.ret_df.mean()
+        cov_matrix = self.ret_df.cov()
+        rf = self.extract_weekly_rf()
         # Calculate the precision matrix (inverse of covariance matrix)
         precision_matrix = np.linalg.inv(cov_matrix)
         # Calculate raw Kelly weights
@@ -210,7 +217,7 @@ class Optimization:
         # Normalize weights so that they sum to 1
         normalized_weights = shifted_weights / np.sum(shifted_weights)
         # Normalize weights so that they sum to 1
-        self.wts = pd.DataFrame({'Symbol_NSE': ret_df.columns, 'Weights': normalized_weights})
+        self.wts = pd.DataFrame({'Symbol_NSE': self.ret_df.columns, 'Weights': normalized_weights})
         print(self.wts)
 
     # ------------------------STRATEGIES BACKEND---------------------#
@@ -231,44 +238,46 @@ class Optimization:
         r, sd = self.portfolio_performance(weights, mean_ret, cov)
         return -(r - self.rf) / sd
 
-    def get_weekly_returns_df(self):
-        ret_dict = {}
+    def get_weekly_prices_df(self):
+        price_dict = {}
         for ticker in self.tickers:
             data = Extract_Data(ticker)
             temp = data.extract_stock_data(period='10y', interval='1d')
             prices = temp['Close']
-            weekly_returns = prices.resample('W').last().pct_change().dropna()
-            ret_dict[ticker] = weekly_returns
+            weekly_prices = prices.resample('W').last()
+            price_dict[ticker] = weekly_prices
 
         # Determine the maximum length and align date range
-        max_length = max(len(v) for v in ret_dict.values())
-        end = max(series.index[-1] for series in ret_dict.values())
-        start = end - pd.DateOffset(weeks=max_length - 1)
-
+        max_length = max(len(v) for v in price_dict.values())
+        self.end = max(series.index[-1] for series in price_dict.values())
+        self.start = self.end - pd.DateOffset(weeks=max_length - 1)
         aligned_dict = {}
-        for ticker, weekly_returns in ret_dict.items():
-            aligned_series = weekly_returns[start:end]
-            aligned_series = aligned_series.reindex(pd.date_range(start=start, end=end, freq='W'),
+        for ticker, weekly_prices in price_dict.items():
+            aligned_series = weekly_prices[self.start:self.end]
+            aligned_series = aligned_series.reindex(pd.date_range(start=self.start, end=self.end, freq='W'),
                                                     method='ffill')
             aligned_dict[ticker] = aligned_series.tolist()
 
         # Create DataFrame from aligned returns
-        ret_df = pd.DataFrame(aligned_dict)
-        ret_df.index = pd.date_range(start=start, end=end, freq='W')
+        price_df = pd.DataFrame(aligned_dict)
+        price_df.index = pd.date_range(start=self.start, end=self.end, freq='W')
 
         # Calculate average number of weekly periods per year
-        ret_df['Year'] = ret_df.index.year
-        periods_per_year = ret_df.groupby('Year').size().mean()
+        price_df['Year'] = price_df.index.year
+        periods_per_year = price_df.groupby('Year').size().mean()
         self.periods_per_year = round(periods_per_year)
-        ret_df.drop(['Year'], axis=1, inplace=True)
+        price_df.drop(['Year'], axis=1, inplace=True)
 
-        return ret_df, start, end
+        return price_df
 
-    def extract_weekly_rf(self, start, end):
+    def extract_weekly_rf(self):
         # Fetch risk-free rate (using '^TNX' as proxy for 10-year rate)
 
         rf_data = yf.Ticker("^TNX")
-        rf = rf_data.history(start=start, end=end)['Close'].resample('W').last()
+        rf = rf_data.history(start=self.start, end=self.end)['Close'].resample('W').last()
         rf = rf.div(self.periods_per_year).div(100).mean()
         return rf
 
+
+data = Optimization(strat='None',univ='Nifty 50')
+print(data.cov_mat)
