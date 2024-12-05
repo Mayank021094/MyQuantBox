@@ -65,7 +65,6 @@ class User(UserMixin):
 def home():
     return render_template("index.html")
 
-
 @app.route('/login', methods=["GET", "POST"])
 def log_in():
     db = get_db()
@@ -154,13 +153,18 @@ def sign_up():
     return render_template("signup.html")
 
 
-# -----------------------Sidebar Items---------------#
+# -----------------------Navbar items---------------#
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     return render_template("dashboard.html")
 
+#-----------------------Sidebar Items--------------#
+#-----------------------Stocks---------------------#
+@app.route('/stocks', methods=['GET', 'POST'])
+def stocks():
+    return render_template("stocks.html")
 
-@app.route('/dashboard/<string:id>', methods=['GET', 'POST'])
+@app.route('/stocks/<string:id>', methods=['GET', 'POST'])
 def strategy(id):
     if request.method == 'POST':
         strat = request.form.get('strategy')
@@ -190,13 +194,12 @@ def strategy(id):
         return redirect(url_for('results', id=id))
     return render_template("strategy_body.html", id=id)
 
-
-@app.route('/dashboard/<string:id>/Results', methods=['GET', 'POST'])
+@app.route('/stocks/<string:id>/Results', methods=['GET', 'POST'])
 def results(id):
     wts_json = session.get('wts')
     param = session.get('param')
     wts = pd.read_json(wts_json)  # Convert JSON string back to DataFrame
-    return render_template('results.html', id=id, wts=wts, param=param)
+    return render_template('results_stocks.html', id=id, wts=wts, param=param)
 
 
 if __name__ == "__main__":
