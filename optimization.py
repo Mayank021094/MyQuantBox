@@ -21,6 +21,7 @@ from scipy.optimize import minimize_scalar, newton, minimize
 from scipy.integrate import quad
 from scipy.stats import norm
 from expected_volatility import Expected_Volatility
+from expected_mean import Expected_Mean
 
 
 # ---------------------CONSTANTS------------------#
@@ -62,7 +63,9 @@ class Optimization:
             pass
 
         self.price_df = self.get_weekly_prices_df()
-        self.cov_mat = Expected_Volatility(self.price_df).mgarch()
+        self.price_df = self.price_df.iloc[:, :2]
+        print(np.log(self.price_df).diff().dropna().mean().mul(100))
+        self.ret_df = Expected_Mean(self.price_df).arima()
 
         # Calculate Scores based on strategy
         if strat == 'Max Sharpe Ratio':
@@ -277,7 +280,6 @@ class Optimization:
         rf = rf_data.history(start=self.start, end=self.end)['Close'].resample('W').last()
         rf = rf.div(self.periods_per_year).div(100).mean()
         return rf
-
-
-data = Optimization(strat='None',univ='Nifty 50')
-print(data.cov_mat)
+#
+# data = Optimization(strat='None', univ='Nifty 50')
+# print(data.ret_df)

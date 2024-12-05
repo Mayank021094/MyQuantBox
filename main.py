@@ -1,4 +1,4 @@
-# ------------------ Import Libraries ------------#
+# ------------------ Import Libraries ---------------#
 import pandas as pd
 import sqlite3
 import smtplib  # To send emails
@@ -96,7 +96,6 @@ def log_in():
         return redirect(url_for('dashboard'))
 
     return render_template("login.html")
-
 
 @app.route('/sign_up', methods=["GET", "POST"])
 def sign_up():

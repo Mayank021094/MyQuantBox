@@ -1,39 +1,31 @@
-<!-- header_after_login.html -->
-<header class="d-flex flex-wrap align-items-center justify-content-center justify-content-md-between py-3 mb-4 border-bottom">
-    {% include "header.html" %}
-</header>
-
-<div class="row">
-    <!-- Sidebar -->
-    <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar p-3">
-        <div class="position-sticky">
-            <ul class="nav flex-column mb-auto">
-                <li class="nav-item">
-                    <a href="{{url_for('strategy', id='Momentum')}}" class="nav-link link-body-emphasis d-flex align-items-center">
-                        <img src="{{ url_for('static', filename='icons/momentum.png') }}" alt="momentum_logo" width="60" height="60" class="me-2">
-                        Momentum
+<style>
+    /* Alignments for header and navbar */
+    .header-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 2px solid #000; /* Adds a clear separation line */
+        padding-bottom: -10px; /* Adds space below header */
+        margin-bottom: 0px; /* Adds space before the navbar */
+    }
+    .btn btn-success{
+        display: flex;
+      }
+</style>
+<div class="container">
+        <!-- Header Section -->
+        <header class="header-container py-3">
+            <div class="logo">
+                <div class="col-md-3 mb-2 mb-md-0">
+                    <a href= {{url_for("dashboard")}} class="d-inline-flex link-body-emphasis text-decoration-none">
+                      <img src="{{url_for('static', filename='/Logo Files/For Web/svg/black_logo_no_background.svg')}}" alt="logo" height="90">
+                      <svg class="bi" width="40" height="32" role="img" aria-label="Bootstrap"><use xlink:href=""></use></svg>
                     </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{url_for('strategy', id='Value')}}" class="nav-link link-body-emphasis d-flex align-items-center">
-                        <img src="{{ url_for('static', filename='icons/value.png') }}" alt="value_logo" width="60" height="60" class="me-2">
-                        Value
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{url_for('strategy', id='Quality')}}" class="nav-link link-body-emphasis d-flex align-items-center">
-                        <img src="{{ url_for('static', filename='icons/quality.png') }}" alt="quality_logo" width="60" height="60" class="me-2">
-                        Quality
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{{url_for('strategy', id='Optimization')}}" class="nav-link link-body-emphasis d-flex align-items-center">
-                        <img src="{{ url_for('static', filename='icons/optimization.png') }}" alt="quality_logo" width="60" height="60" class="me-2">
-                        Optimization
-                    </a>
-                </li>
-                <!-- Add more sidebar items as needed -->
-            </ul>
-        </div>
-    </nav>
+                  </div>
+            </div>
+        </header>
+        <!-- Navbar Section -->
+            {% include "navbar_after_login.html" %}
 </div>
+
+
